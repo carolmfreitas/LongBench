@@ -178,16 +178,18 @@ def query_llm(prompt, model, tokenizer, client=None, temperature=0.5, max_new_to
             input_ids = input_ids[:max_len//2] + input_ids[-max_len//2:]
             prompt = tokenizer.decode(input_ids)
     
+    headers = {
+        "Authorization": f"Bearer {HF_API_TOKEN}",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+
     payload = {
-        "inputs": prompt,
+        "inputs": prompt, 
         "parameters": {
             "temperature": temperature,
             "max_new_tokens": max_new_tokens
         }
-    }
-    headers = {
-        "Authorization": f"Bearer {HF_API_TOKEN}",
-        "Content-Type": "application/json"
     }
 
     tries = 0
@@ -196,9 +198,8 @@ def query_llm(prompt, model, tokenizer, client=None, temperature=0.5, max_new_to
     while tries < 5:
         tries += 1
         try:
-            response = requests.post(HF_API_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            return response.json()['generated_text']
+            output = query(payload, headers)
+            return output[0]['generated_text']
         except requests.exceptions.RequestException as e:
             print(f"Erro na API ({e}), tentando novamente...")
             time.sleep(1)
