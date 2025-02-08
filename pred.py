@@ -124,14 +124,10 @@ def select_top_sentences(tokenized_text, clusters, cluster_rank, query):
     for cluster, cluster_sentences in cluster_dict.items():
         relevancia_cluster = relevancias_normalizadas.get(cluster, 0)
 
-        print(f"Cluster: {cluster} Relevância do Cluster: {relevancia_cluster}")
-
         relevancia_ponderada = relevancia_cluster ** 0.6 #testar para saber qual o melhor valor
 
         top_k = max(1, int(relevancia_ponderada * len(cluster_sentences)))
         #top_k = max(1, int(0.2 * len(cluster_sentences)))
-
-        print("top k: ", top_k)
 
         query_cluster_pairs = [(query, sentence) for sentence in cluster_sentences]
         relevance_scores = model.predict(query_cluster_pairs)
@@ -163,6 +159,10 @@ def compress_prompt(prompt, query):
     selected_sentences = select_top_sentences(tokenized_text, clusters, cluster_rank, query)
     result = format_compressed_sentences(selected_sentences, tokenized_text)
     return result
+
+def query(payload, headers):
+	response = requests.post(HF_API_TOKEN, headers=headers, json=payload)
+	return response.json()
 
 def query_llm(prompt, model, tokenizer, client=None, temperature=0.5, max_new_tokens=128, stop=None):
     max_len = maxlen_map[model]
@@ -243,15 +243,17 @@ def get_pred(data, args, fout):
                                   .replace('$C_B$', item['choice_B'].strip())\
                                   .replace('$C_C$', item['choice_C'].strip())\
                                   .replace('$C_D$', item['choice_D'].strip())
+        
+        print("context", context)
 
-        compressed_prompt = compress_prompt(prompt_original, item['question'])
+        compressed_context = compress_prompt(context, item['question'])
 
-        # gera resposta com o prompt original
-        output_original = query_llm(prompt_original, temperature=0.1, max_new_tokens=128)
-        if output_original == '':
-            continue
-        response_original = output_original.strip()
-        pred_original = extract_answer(response_original)
+        compressed_prompt = template.replace('$DOC$', compressed_context.strip())\
+                                    .replace('$Q$', item['question'].strip())\
+                                    .replace('$C_A$', item['choice_A'].strip())\
+                                    .replace('$C_B$', item['choice_B'].strip())\
+                                    .replace('$C_C$', item['choice_C'].strip())\
+                                    .replace('$C_D$', item['choice_D'].strip())
 
         # gera resposta com prompt comprimido
         output_compressed = query_llm(compressed_prompt, temperature=0.1, max_new_tokens=128)
@@ -260,13 +262,9 @@ def get_pred(data, args, fout):
         response_compressed = output_compressed.strip()
         pred_compressed = extract_answer(response_compressed)
 
-        item['response_original'] = response_original
         item['response_compressed'] = response_compressed
-        item['pred_original'] = pred_original
         item['pred_compressed'] = pred_compressed
-        item['judge_original'] = pred_original == item['answer']
         item['judge_compressed'] = pred_compressed == item['answer']
-        item['prompt_length_original'] = len(prompt_original)
         item['prompt_length_compressed'] = len(compressed_prompt)
 
         # salva no arquivo
@@ -281,7 +279,7 @@ def main():
     parser.add_argument("--cot", "-cot", action='store_true') # set to True if using COT
     parser.add_argument("--no_context", "-nc", action='store_true') # set to True if using no context (directly measuring memorization)
     parser.add_argument("--rag", "-rag", type=int, default=0) # set to 0 if RAG is not used, otherwise set to N when using top-N retrieved context
-    parser.add_argument("--n_proc", "-n", type=int, default=4)
+    parser.add_argument("--n_proc", "-n", type=int, default=1)
     args = parser.parse_args([])
     
     os.makedirs(args.save_dir, exist_ok=True)
@@ -308,10 +306,8 @@ def main():
     data = [item for item in data_all if item["_id"] not in has_data]
 
     data_subsets = [data[i::args.n_proc] for i in range(args.n_proc)]
-    with ThreadPoolExecutor(max_workers=args.n_proc) as executor:
-        futures = [executor.submit(get_pred, subset, args, fout) for subset in data_subsets]
-        for future in futures:
-            future.result()
+    for subset in data_subsets:
+      get_pred(subset, args, fout)
 
 if __name__ == "__main__":
     main()
