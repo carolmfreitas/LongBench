@@ -243,7 +243,7 @@ def get_pred(data, args, fout):
                                   .replace('$C_C$', item['choice_C'].strip())\
                                   .replace('$C_D$', item['choice_D'].strip())
 
-        compressed_prompt = compress_prompt(prompt_original, item['input'])
+        compressed_prompt = compress_prompt(prompt_original, item['question'])
 
         # gera resposta com o prompt original
         output_original = query_llm(prompt_original, temperature=0.1, max_new_tokens=128)
