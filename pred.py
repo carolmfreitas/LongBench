@@ -151,6 +151,7 @@ def format_compressed_sentences(ranked_sentences, tokenized_text):
     return compressed_prompt
 
 def compress_prompt(prompt, query):
+    context = prompt.strip()
     clean_text = preprocess_text(context)
     tokenized_text = sent_tokenize(clean_text)
     embeddings = generate_embeddings(tokenized_text)
@@ -276,7 +277,7 @@ def get_pred(data, args, fout):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--save_dir", "-s", type=str, default="results")
-    parser.add_argument("--model", "-m", type=str, default="GLM-4-9B-Chat")
+    parser.add_argument("--model", "-m", type=str, default="Llama-3.1-8B-Instruct")
     parser.add_argument("--cot", "-cot", action='store_true') # set to True if using COT
     parser.add_argument("--no_context", "-nc", action='store_true') # set to True if using no context (directly measuring memorization)
     parser.add_argument("--rag", "-rag", type=int, default=0) # set to 0 if RAG is not used, otherwise set to N when using top-N retrieved context
