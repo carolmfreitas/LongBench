@@ -243,8 +243,6 @@ def get_pred(data, args, fout):
                                   .replace('$C_B$', item['choice_B'].strip())\
                                   .replace('$C_C$', item['choice_C'].strip())\
                                   .replace('$C_D$', item['choice_D'].strip())
-        
-        print("context", context)
 
         compressed_context = compress_prompt(context, item['question'])
 
@@ -256,7 +254,7 @@ def get_pred(data, args, fout):
                                     .replace('$C_D$', item['choice_D'].strip())
 
         # gera resposta com prompt comprimido
-        output_compressed = query_llm(compressed_prompt, temperature=0.1, max_new_tokens=128)
+        output_compressed = query_llm(compressed_prompt, model, tokenizer, client=None, temperature=0.1, max_new_tokens=128)
         if output_compressed == '':
             continue
         response_compressed = output_compressed.strip()
