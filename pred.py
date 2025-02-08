@@ -12,6 +12,7 @@ from gensim.models import Word2Vec
 from sklearn.cluster import KMeans
 from scipy.spatial.distance import cosine
 import networkx as nx
+from openai import OpenAI
 from sentence_transformers import SentenceTransformer,CrossEncoder
 from nltk.tokenize import sent_tokenize
 import re
@@ -163,7 +164,7 @@ def compress_prompt(prompt, query):
     result = format_compressed_sentences(selected_sentences, tokenized_text)
     return result
 
-def query_llm(prompt, model, tokenizer, client=None, temperature=0.5, max_new_tokens=128, stop=None):
+def query_llm(prompt, model, tokenizer, client, temperature=0.5, max_new_tokens=128, stop=None):
     max_len = maxlen_map[model]
 
     if model in model_map:
@@ -176,18 +177,6 @@ def query_llm(prompt, model, tokenizer, client=None, temperature=0.5, max_new_to
         if len(input_ids) > max_len:
             input_ids = input_ids[:max_len//2] + input_ids[-max_len//2:]
             prompt = tokenizer.decode(input_ids)
-    
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "temperature": temperature,
-            "max_new_tokens": max_new_tokens
-        }
-    }
-    headers = {
-        "Authorization": f"Bearer {HF_API_TOKEN}",
-        "Content-Type": "application/json"
-    }
 
     tries = 0
     if model in model_map:
@@ -195,13 +184,21 @@ def query_llm(prompt, model, tokenizer, client=None, temperature=0.5, max_new_to
     while tries < 5:
         tries += 1
         try:
-            response = requests.post(HF_API_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            return response.json()['generated_text']
-        except requests.exceptions.RequestException as e:
-            print(f"Erro na API ({e}), tentando novamente...")
+            completion = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+                max_tokens=max_new_tokens,
+            )
+            return completion.choices[0].message.content
+        except KeyboardInterrupt as e:
+            raise e
+        except Exception as e:
+            print("Error Occurs: \"%s\"        Retry ..."%(str(e)))
             time.sleep(1)
-    return ''
+    else:
+        print("Max tries. Failed.")
+        return ''
 
 def extract_answer(response):
     response = response.replace('*', '')
@@ -220,6 +217,11 @@ def get_pred(data, args, fout):
     model = args.model
 
     tokenizer = AutoTokenizer.from_pretrained(model_map[model], trust_remote_code=True)
+
+    client = OpenAI(
+        base_url=URL,
+        api_key=API_KEY
+    )
 
     for item in tqdm(data):
         context = item['context']
@@ -246,14 +248,14 @@ def get_pred(data, args, fout):
         compressed_prompt = compress_prompt(prompt_original, item['question'])
 
         # gera resposta com o prompt original
-        output_original = query_llm(prompt_original, temperature=0.1, max_new_tokens=128)
+        output_original = query_llm(prompt_original, model, tokenizer, client, temperature=0.1, max_new_tokens=128)
         if output_original == '':
             continue
         response_original = output_original.strip()
         pred_original = extract_answer(response_original)
 
         # gera resposta com prompt comprimido
-        output_compressed = query_llm(compressed_prompt, temperature=0.1, max_new_tokens=128)
+        output_compressed = query_llm(compressed_prompt, model, tokenizer, client, temperature=0.1, max_new_tokens=128)
         if output_compressed == '':
             continue
         response_compressed = output_compressed.strip()
