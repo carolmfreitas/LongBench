@@ -23,12 +23,14 @@ nltk.download('punkt_tab')
 nltk.download('punkt')
 nltk.download('stopwords')
 nltk.download('wordnet')
+from sklearn.metrics.pairwise import cosine_similarity
+from joblib import Parallel, delayed
 
 model_map = json.loads(open('/content/LongBench/config/model2path.json', encoding='utf-8').read())
 maxlen_map = json.loads(open('/content/LongBench/config/model2maxlen.json', encoding='utf-8').read())
 
-HF_API_URL = "https://your-huggingface-endpoint.com/v1" 
-HF_API_TOKEN = "your-hf-api-token"
+HF_API_URL = "hf_url" 
+HF_API_TOKEN = "hf_token"
 
 template_rag = open('/content/LongBench/prompts/0shot_rag.txt', encoding='utf-8').read()
 template_no_context = open('/content/LongBench/prompts/0shot_no_context.txt', encoding='utf-8').read()
@@ -49,37 +51,42 @@ def preprocess_text(text):
 def generate_embeddings(sentences):
     model = SentenceTransformer("all-MiniLM-L6-v2")
     embeddings = model.encode(sentences, convert_to_numpy=True)
+    print("generated embeddings")
     return embeddings
 
 def calculate_similarity_matrix(embeddings):
-    n = len(embeddings)
-    matrix = np.zeros((n, n))
-    for i in range(n):
-        for j in range(n):
-            if i != j:
-                matrix[i][j] = 1 - cosine(embeddings[i], embeddings[j])
-    return matrix
+    sim_matrix = cosine_similarity(embeddings)
+    np.fill_diagonal(sim_matrix, 0)
+    print("calculated sim matrix")
+    return sim_matrix
 
 def clusterize_optimal(sim_matrix, num_clusters):
     dist_matrix = 1 - sim_matrix
     kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
     clusters = kmeans.fit_predict(dist_matrix)
+    print("clustrized optimal")
     return clusters, kmeans.inertia_
 
 def find_optimal_num_clusters(sim_matrix, max_clusters=20):
-    sse = []
-    for k in range(1, max_clusters + 1):
+    def compute_sse(k):
         _, sse_value = clusterize_optimal(sim_matrix, k)
-        sse.append(sse_value)
+        return sse_value
+
+    sse = Parallel(n_jobs=-1)(delayed(compute_sse)(k) for k in range(1, max_clusters + 1))
+
     sse_diff = np.diff(sse)
     sse_diff_diff = np.diff(sse_diff)
+
     optimal_num_clusters = np.argmin(sse_diff_diff) + 2
+
+    print("found optimal num clusters")
     return optimal_num_clusters
 
 def clusterize(sim_matrix, num_clusters):
     dist_matrix = 1 - sim_matrix
     kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
     clusters = kmeans.fit_predict(dist_matrix)
+    print("clusterized")
     return clusters
 
 def create_clusters_dict(tokenized_text, clusters):
@@ -100,7 +107,7 @@ def rank_clusters(clusters_dict, query):
 
     cluster_scores = model.predict(cluster_pairs)
     cluster_rank = sorted(zip(clusters_dict.keys(), cluster_scores), key=lambda x: x[1], reverse=True)
-
+    print("ranked clusters")
     return cluster_rank
 
 def select_top_sentences(tokenized_text, clusters, cluster_rank, query):
@@ -135,7 +142,7 @@ def select_top_sentences(tokenized_text, clusters, cluster_rank, query):
         ranked_results = sorted(zip(cluster_sentences, relevance_scores), key=lambda x: x[1], reverse=True)[:top_k]
 
         selected_sentences.extend([sentence for sentence, score in ranked_results])
-
+    print("selected top sentences")
     return selected_sentences
 
 def format_compressed_sentences(ranked_sentences, tokenized_text):
@@ -161,7 +168,7 @@ def compress_prompt(prompt, query):
     return result
 
 def query(payload, headers):
-	response = requests.post(HF_API_TOKEN, headers=headers, json=payload)
+	response = requests.post(HF_API_URL, headers=headers, json=payload)
 	return response.json()
 
 def query_llm(prompt, model, tokenizer, client=None, temperature=0.5, max_new_tokens=128, stop=None):
@@ -310,3 +317,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
