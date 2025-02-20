@@ -1,0 +1,18 @@
+Read the following text carefully. 
+I will provide multiple parts of the text until you find the correct answer to the question. 
+If you find the answer, respond in the required format. 
+If the answer is not present in the given text, respond only with "I don't know". 
+
+<text>
+$DOC$
+</text>
+
+What is the correct answer to this question: $Q$
+Choices:
+(A) $C_A$
+(B) $C_B$
+(C) $C_C$
+(D) $C_D$
+
+Format your response strictly as follows: "The correct answer is (insert answer here)".
+If you do not know the answer, respond only with "I don't know".
